@@ -8,22 +8,60 @@ using StructArrays
 using StaticArrays
 
 using Base.Order
-using Base: copymutable
+using Base: copymutable, uinttype
 
 export ssortperm!!, ssortperm!, ssortperm
 
-function sort_equal_subarrays!(v, vs, o::Ordering, offsets_l, offsets_r)
-    i = firstindex(v)
-    while i < lastindex(v)
+# send_to end from Base.sort
+# copy here for compatibility with earlier Julia versions
+"""
+    send_to_end!(f::Function, v::AbstractVector; [lo, hi])
+Send every element of `v` for which `f` returns `true` to the end of the vector and return
+the index of the last element for which `f` returns `false`.
+`send_to_end!(f, v, lo, hi)` is equivalent to `send_to_end!(f, view(v, lo:hi))+lo-1`
+Preserves the order of the elements that are not sent to the end.
+"""
+function send_to_end!(f::F, v::AbstractVector; lo=firstindex(v), hi=lastindex(v)) where F <: Function
+    i = lo
+    @inbounds while i <= hi && !f(v[i])
+        i += 1
+    end
+    j = i + 1
+    @inbounds while j <= hi
+        if !f(v[j])
+            v[i], v[j] = v[j], v[i]
+            i += 1
+        end
+        j += 1
+    end
+    i - 1
+end
+"""
+    send_to_end!(f::Function, v::AbstractVector, o::DirectOrdering[, end_stable]; lo, hi)
+Return `(a, b)` where `v[a:b]` are the elements that are not sent to the end.
+If `o isa ReverseOrdering` then the "end" of `v` is `v[lo]`.
+If `end_stable` is set, the elements that are sent to the end are stable instead of the
+elements that are not
+"""
+@inline send_to_end!(f::F, v::AbstractVector, ::ForwardOrdering, end_stable=false; lo, hi) where F <: Function =
+    end_stable ? (lo, hi-send_to_end!(!f, view(v, hi:-1:lo))) : (lo, send_to_end!(f, v; lo, hi))
+@inline send_to_end!(f::F, v::AbstractVector, ::ReverseOrdering, end_stable=false; lo, hi) where F <: Function =
+    end_stable ? (send_to_end!(!f, v; lo, hi)+1, hi) : (hi-send_to_end!(f, view(v, hi:-1:lo))+1, hi)
+
+after_zero(::ForwardOrdering, x) = !signbit(x)
+after_zero(::ReverseOrdering, x) = signbit(x)
+is_concrete_IEEEFloat(T::Type) = T <: Base.IEEEFloat && isconcretetype(T)
+
+function sort_equal_subarrays!(v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    i = lo
+    while i < hi
         if !lt(o, v[i], v[i+1]) 
             first_equal = i
-            while i < lastindex(v) && !lt(o, v[i], v[i+1])
+            while i < hi && !lt(o, v[i], v[i+1])
                 i += 1
             end
             last_equal = i
-            lo = first_equal
-            hi = last_equal
-            pdqsort_loop!(vs, lo, hi, BranchlessPatternDefeatingQuicksortAlg(), Base.Order.By(x->x[2]), log2i(hi + 1 - lo), offsets_l, offsets_r)
+            pdqsort_loop!(vs, first_equal, last_equal, BranchlessPatternDefeatingQuicksortAlg(), Base.Order.By(x->x[2]), log2i(hi + 1 - lo), offsets_l, offsets_r)
         end
         i += 1
     end
@@ -32,6 +70,22 @@ end
 function allocate_index_vector(v)
     ax = axes(v, 1)
     similar(Vector{eltype(ax)}, ax)
+end
+
+function _sortperm_IEEEFloat!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    lo, hi = send_to_end!(x->isnan(x[1]), vs, o, true; lo, hi)
+    ivType = uinttype(eltype(v))
+    iv = reinterpret(ivType, v)
+    ivs = StructArray{Tuple{ivType,eltype(ix)}}(val=iv, ix=ix)
+    j = send_to_end!(x -> after_zero(o, x[1]), vs; lo, hi)
+    _sortperm!!(ix, iv, ivs, lo, j, Reverse, offsets_l, offsets_r)
+    _sortperm!!(ix, iv, ivs, j+1, hi, Forward, offsets_l, offsets_r)
+end
+
+function _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    a = BranchlessPatternDefeatingQuicksortAlg()
+    pdqsort_loop!(vs, lo, hi, a, Base.Order.By(x->x[1], o), log2i(hi + 1 - lo), offsets_l, offsets_r)
+    sort_equal_subarrays!(v, vs, lo, hi, o, offsets_l, offsets_r)
 end
 
 """
@@ -60,11 +114,13 @@ function ssortperm!!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Orde
     o = ord(lt, by, rev ? true : nothing, order)
     lo = firstindex(vs)
     hi = lastindex(vs)
-    a = BranchlessPatternDefeatingQuicksortAlg()
     offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
     offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    pdqsort_loop!(vs, lo, hi, a, Base.Order.By(x->x[1], o), log2i(hi + 1 - lo), offsets_l, offsets_r)
-    sort_equal_subarrays!(v, vs, o, offsets_l, offsets_r)
+    if is_concrete_IEEEFloat(eltype(v)) && o isa DirectOrdering
+        _sortperm_IEEEFloat!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    else
+        _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    end
     ix
 end
 

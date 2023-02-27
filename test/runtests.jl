@@ -65,3 +65,46 @@ end
         end
     end
 end
+
+randnans(n) = reinterpret(Float64,[rand(UInt64)|0x7ff8000000000000 for i=1:n])
+
+function randn_with_nans(n,p)
+    v = randn(n)
+    x = findall(rand(n).<p)
+    v[x] = randnans(length(x))
+    return v
+end
+
+@testset "rand_with_NaNs and negative Floats" begin
+    for n in [(0:31)..., 100, 999, 1000, 1001]
+        v = randn_with_nans(n,0.1)
+        vo = OffsetArray(rand(Int,n), (1:n).+100)
+        for order in [Base.Order.Forward, Base.Order.Reverse]
+
+            pref = sortperm(v, order=order)
+            vref = sort(v, order=order)
+
+            p = ssortperm(v, order=order)
+            @test p == pref
+
+            v2 = copy(v)
+            p .= 0
+            ssortperm!!(p, v2, order=order)
+            @test p == pref
+            @test reinterpret(UInt64,v2) == reinterpret(UInt64,vref)
+
+            # offset
+            pref = sortperm(vo, order=order)
+            vref = sort(vo, order=order)
+
+            p = ssortperm(vo, order=order)
+            @test p == pref
+
+            v2o = copy(vo)
+            p .= 0
+            ssortperm!!(p, v2o, order=order)
+            @test p == pref
+            @test v2o == vref
+        end
+    end
+end;
