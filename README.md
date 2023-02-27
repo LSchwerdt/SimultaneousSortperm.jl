@@ -21,7 +21,6 @@ More benchmark results can be found [here](https://github.com/LSchwerdt/MiscJuli
 
 ## Roadmap
 
-- Include compat for dependencies.
 - Use pattern-defeating-quicksort from SortingAlgorithms when PR is merged.
 - Add optimizations for `Missing`, Float, and small Integers.
 - Dispatch to `sortperm` / `sortperm!` when they are faster.
