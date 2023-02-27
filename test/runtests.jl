@@ -1,6 +1,7 @@
 using SimultaneousSortperm
 using Test
 using Random
+using OffsetArrays
 
 Random.seed!(0xdeadbeef)
 
@@ -42,6 +43,25 @@ Random.seed!(0xdeadbeef)
                     @test v2 == vref
                 end
             end
+        end
+    end
+end
+
+@testset "OffsetArrays" begin
+    for n in [(0:31)..., 100, 999, 1000, 1001]
+        for offset in [-n , -1, 0, 1, n]
+            v = OffsetArray(rand(Int,n), (1:n).+offset) 
+            pref = sortperm(v)
+            vref = sort(v)
+
+            p = ssortperm(v)
+            @test p == pref
+
+            v2 = copy(v)
+            p .= 0
+            ssortperm!!(p, v2)
+            @test p == pref
+            @test v2 == vref
         end
     end
 end
