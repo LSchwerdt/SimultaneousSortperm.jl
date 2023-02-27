@@ -22,7 +22,8 @@ More benchmark results can be found [here](https://github.com/LSchwerdt/MiscJuli
 ## Roadmap
 
 - Use pattern-defeating-quicksort from SortingAlgorithms when PR is merged.
-- Add optimizations for `Missing`, Float, and small Integers.
+- Add special optimizations for functions that do not sort the input. 
+- Add optimization for small Integers?
 - Dispatch to `sortperm` / `sortperm!` when they are faster.
 - Implement `dims` keyword (added to `sortperm` in Julia 1.9).
 - Contribute to Base / SortingAlgorithms
