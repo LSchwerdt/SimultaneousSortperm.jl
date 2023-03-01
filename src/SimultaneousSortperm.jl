@@ -98,14 +98,15 @@ end
 pdq_loop!(v, lo, hi, o, offsets_l, offsets_r) = pdqsort_loop!(v, lo, hi, BranchlessPatternDefeatingQuicksortAlg(), o, log2i(hi + 1 - lo), offsets_l, offsets_r)
 
 function _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
-    was_unstable = false
     if nonmissingtype(eltype(v)) != eltype(v) && o isa DirectOrdering && hi>lo
         lo, hi = send_to_end!(x->ismissing(x[1]), vs, o, true; lo, hi)
-        v = WithoutMissingVector(v, unsafe=true)
-        vs = StructArray{Tuple{eltype(v),eltype(ix)}}(val=v, ix=ix)
-        was_unstable = true
+        v_nomissing = WithoutMissingVector(v, unsafe=true)
+        vs_nomissing = StructArray{Tuple{eltype(v_nomissing),eltype(ix)}}(val=v_nomissing, ix=ix)
+        _sortperm_IEEEFloat_optimization!!(ix, v_nomissing, vs_nomissing, lo, hi, o::Ordering, offsets_l, offsets_r, true)
+    else
+        _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
     end
-    _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, was_unstable)
+    
 end
 
 function _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, was_unstable)
@@ -131,6 +132,41 @@ end
 function _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
     pdq_loop!(vs, lo, hi, Base.Order.By(x->x[1], o), offsets_l, offsets_r)
     sort_equal_subarrays!(v, vs, lo, hi, o, offsets_l, offsets_r)
+end
+
+function _sortperm_Missing_optimization!(ix, v, o::Ordering)
+    lo = firstindex(v)
+    hi = lastindex(v)
+    if nonmissingtype(eltype(v)) != eltype(v) && o isa DirectOrdering && hi>lo
+        lo_i, hi_i = lo, hi
+        offset = firstindex(v)-1;
+        for (i,x) in zip(eachindex(v).-offset, v)
+            if ismissing(x) == (o isa ReverseOrdering) # should i go at the beginning?
+                ix[lo_i] = i
+                lo_i += 1
+            else
+                ix[hi_i] = i
+                hi_i -= 1
+            end
+        end
+        reverse!(ix, lo_i, hi)
+        if o isa ReverseOrdering
+            lo = lo_i
+        else
+            hi = hi_i
+        end
+        vv = similar(WithoutMissingVector(v, unsafe=true))
+        for i in lo:hi
+            vv[i] = v[ix[i]]
+        end
+    else
+        ix .= LinearIndices(v)
+        vv = copymutable(v)
+    end
+    vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix) 
+    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    _sortperm_IEEEFloat_optimization!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
 end
 
 """
@@ -186,8 +222,9 @@ julia> v[ix]
 ```
 """
 function ssortperm!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
-    vv = copymutable(v)
-    ssortperm!!(ix, vv, lt=lt, by=by, rev=rev, order=order)
+    o = ord(lt, by, rev ? true : nothing, order)
+    _sortperm_Missing_optimization!(ix, v, o::Ordering)
+    ix
 end
 
 """
