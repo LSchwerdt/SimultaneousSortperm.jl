@@ -5,6 +5,15 @@ using OffsetArrays
 
 Random.seed!(0xdeadbeef)
 
+randnans(n) = reinterpret(Float64,[rand(UInt64)|0x7ff8000000000000 for i=1:n])
+
+function randn_with_nans(n,p)
+    v = randn(n)
+    x = findall(rand(n).<p)
+    v[x] = randnans(length(x))
+    return v
+end
+
 @testset "SimultaneousSortperm.jl" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
         for T in [UInt16, Int, Float64], rev in [false, true], lt in [isless, >]
@@ -66,14 +75,7 @@ end
     end
 end
 
-randnans(n) = reinterpret(Float64,[rand(UInt64)|0x7ff8000000000000 for i=1:n])
 
-function randn_with_nans(n,p)
-    v = randn(n)
-    x = findall(rand(n).<p)
-    v[x] = randnans(length(x))
-    return v
-end
 
 @testset "rand_with_NaNs and negative Floats" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
@@ -146,3 +148,39 @@ end;
         end
     end
 end;
+
+@testset "short_strings" begin
+    for n in [(1:31)..., 100, 999, 1000, 1001]
+        for len in 2:17
+            for order in [Base.Order.Forward, Base.Order.Reverse]
+            v = [randstring(len) for _ in 1:n]
+            vo  = OffsetArray(v, (1:n).+100)
+            
+            pref = sortperm(v, order=order)
+            vref = sort(v, order=order)
+            
+            p = ssortperm(v, order=order)
+            @test p == pref
+            
+            v2 = copy(v)
+            p .= 0
+            ssortperm!!(p, v2, order=order)
+            @test p == pref
+            @test v2 == vref
+            
+            # offset
+            pref = sortperm(vo, order=order)
+            vref = sort(vo, order=order)
+            
+            p = ssortperm(vo, order=order)
+            @test p == pref
+            
+            v2o = copy(vo)
+            p .= 0
+            ssortperm!!(p, v2o, order=order)
+            @test p == pref
+            @test v2o == vref
+            end            
+        end
+    end
+end

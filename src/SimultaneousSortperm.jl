@@ -125,6 +125,54 @@ function _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offs
         _sortperm!!(ix, iv, ivs, lo, j, Reverse, offsets_l, offsets_r)
         _sortperm!!(ix, iv, ivs, j+1, hi, Forward, offsets_l, offsets_r)
     else
+        _sortperm_short_string_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    end
+end
+
+function uintmap_string(s,T)
+    x = zero(T)
+    len = ncodeunits(s)
+    lenType = sizeof(T)
+    uselen = min(len,lenType) 
+    shift = 8lenType
+    for i = 1:uselen
+        shift -= 8
+        @inbounds x |= T(codeunit(s, i)) << shift        
+    end
+    x
+end
+
+function uinttype_of_size(x)
+    @assert 1 <= x <= 16
+    (UInt8, UInt16, UInt32, UInt32,
+    UInt64, UInt64,UInt64, UInt64,
+    UInt128, UInt128, UInt128, UInt128,
+    UInt128, UInt128, UInt128, UInt128)[x]
+end
+
+function uintmap_strings!(v, vs::AbstractArray{String})
+    @inbounds for i in eachindex(v)
+        v[i] = uintmap_string(vs[i],eltype(v))
+    end
+end
+
+function uintmap_strings(vs::AbstractArray{String}, T::Type)
+    v = similar(Vector{T}, axes(vs))
+    uintmap_strings!(v, vs)
+    v
+end
+
+function _sortperm_short_string_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    if eltype(v) === String && o isa DirectOrdering
+        maxlength = mapreduce(ncodeunits, max, v)
+        if maxlength > 16 || maxlength < 1
+            return _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+        end
+        T = uinttype_of_size(maxlength)
+        vu = uintmap_strings(v,T)
+        vsu = StructArray{Tuple{T,eltype(ix),String}}(val=vu, ix=ix, s=v)
+        _sortperm!!(ix, vu, vsu, lo, hi, o::Ordering, offsets_l, offsets_r) 
+    else
         _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
     end
 end
