@@ -97,16 +97,10 @@ end
 
 pdq_loop!(v, lo, hi, o, offsets_l, offsets_r) = pdqsort_loop!(v, lo, hi, BranchlessPatternDefeatingQuicksortAlg(), o, log2i(hi + 1 - lo), offsets_l, offsets_r)
 
-function _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
-    if nonmissingtype(eltype(v)) != eltype(v) && o isa DirectOrdering && hi>lo
-        lo, hi = send_to_end!(x->ismissing(x[1]), vs, o, true; lo, hi)
-        v_nomissing = WithoutMissingVector(v, unsafe=true)
-        vs_nomissing = StructArray{Tuple{eltype(v_nomissing),eltype(ix)}}(val=v_nomissing, ix=ix)
-        _sortperm_IEEEFloat_optimization!!(ix, v_nomissing, vs_nomissing, lo, hi, o::Ordering, offsets_l, offsets_r, true)
-    else
-        _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
-    end
-    
+
+function _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    pdq_loop!(vs, lo, hi, Base.Order.By(x->x[1], o), offsets_l, offsets_r)
+    sort_equal_subarrays!(v, vs, lo, hi, o, offsets_l, offsets_r)
 end
 
 function _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, was_unstable)
@@ -125,11 +119,23 @@ function _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offs
         _sortperm!!(ix, iv, ivs, lo, j, Reverse, offsets_l, offsets_r)
         _sortperm!!(ix, iv, ivs, j+1, hi, Forward, offsets_l, offsets_r)
     else
-        _sortperm_short_string_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+        _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
     end
 end
 
-function uintmap_string(s,T)
+function _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    if nonmissingtype(eltype(v)) != eltype(v) && o isa DirectOrdering && hi>lo
+        lo, hi = send_to_end!(x->ismissing(x[1]), vs, o, true; lo, hi)
+        v_nomissing = WithoutMissingVector(v, unsafe=true)
+        vs_nomissing = StructArray{Tuple{eltype(v_nomissing),eltype(ix)}}(val=v_nomissing, ix=ix)
+        _sortperm_IEEEFloat_optimization!!(ix, v_nomissing, vs_nomissing, lo, hi, o::Ordering, offsets_l, offsets_r, true)
+    else
+        _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
+    end
+    
+end
+
+function uintmap_string(s::String,T::Type)
     x = zero(T)
     len = ncodeunits(s)
     lenType = sizeof(T)
@@ -142,12 +148,18 @@ function uintmap_string(s,T)
     x
 end
 
-function uinttype_of_size(x)
+function uinttype_of_size(x::Integer)
     @assert 1 <= x <= 16
     (UInt8, UInt16, UInt32, UInt32,
     UInt64, UInt64,UInt64, UInt64,
     UInt128, UInt128, UInt128, UInt128,
     UInt128, UInt128, UInt128, UInt128)[x]
+end
+
+function uintmap_strings!(v, vs::AbstractArray{String}, lo::Int, hi::Int, ix)
+    @inbounds for i in lo:hi
+        v[i] = uintmap_string(vs[ix[i]],eltype(v))
+    end
 end
 
 function uintmap_strings!(v, vs::AbstractArray{String})
@@ -156,30 +168,45 @@ function uintmap_strings!(v, vs::AbstractArray{String})
     end
 end
 
+function uintmap_strings(vs::AbstractArray{String}, T::Type, lo::Int, hi::Int, ix)
+    v = similar(Vector{T}, axes(vs))
+    uintmap_strings!(v, vs, lo, hi, ix)
+    v
+end
+
 function uintmap_strings(vs::AbstractArray{String}, T::Type)
     v = similar(Vector{T}, axes(vs))
     uintmap_strings!(v, vs)
     v
 end
 
-function _sortperm_short_string_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
-    if eltype(v) === String && o isa DirectOrdering
-        maxlength = mapreduce(ncodeunits, max, v)
-        if maxlength > 16 || maxlength < 1
-            return _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
-        end
-        T = uinttype_of_size(maxlength)
-        vu = uintmap_strings(v,T)
-        vsu = StructArray{Tuple{T,eltype(ix),String}}(val=vu, ix=ix, s=v)
-        _sortperm!!(ix, vu, vsu, lo, hi, o::Ordering, offsets_l, offsets_r) 
-    else
-        _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
-    end
-end
+maxncodeunints(v::AbstractArray{String}) = mapreduce(ncodeunits, max, v, init=0)
+maxncodeunints(v::AbstractArray{Union{String,Missing}}) = mapreduce(x-> ismissing(x) ? 0 : ncodeunits(x), max, v, init=0)
 
-function _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
-    pdq_loop!(vs, lo, hi, Base.Order.By(x->x[1], o), offsets_l, offsets_r)
-    sort_equal_subarrays!(v, vs, lo, hi, o, offsets_l, offsets_r)
+function _sortperm_short_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v)) <= 16
+        T = uinttype_of_size(maxlength)
+        if vcontainsmissing    
+            vu = uintmap_strings(v, T, lo, hi, ix)
+        else
+            vu = uintmap_strings(v,T)
+        end
+        vs = StructArray{Tuple{T,eltype(ix)}}(val=vu, ix=ix)
+        _sortperm!!(ix, vu, vs, lo, hi, o::Ordering, offsets_l, offsets_r) 
+    else
+        if vcontainsmissing
+            vv = similar(WithoutMissingVector(v, unsafe=true))
+            for i in lo:hi
+                vv[i] = v[ix[i]]
+            end
+        else
+            vv = copymutable(v)
+        end
+        vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix) 
+        _sortperm!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    end
 end
 
 function _sortperm_Missing_optimization!(ix, v, o::Ordering)
@@ -203,18 +230,13 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
         else
             hi = hi_i
         end
-        vv = similar(WithoutMissingVector(v, unsafe=true))
-        for i in lo:hi
-            vv[i] = v[ix[i]]
-        end
+        vcontainsmissing = true
     else
         ix .= LinearIndices(v)
-        vv = copymutable(v)
+        vcontainsmissing = false
     end
-    vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix) 
-    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    _sortperm_IEEEFloat_optimization!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
+
+    _sortperm_short_string_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
 end
 
 """

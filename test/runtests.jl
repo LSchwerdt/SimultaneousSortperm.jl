@@ -54,7 +54,7 @@ end
             end
         end
     end
-end
+end;
 
 @testset "OffsetArrays" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
@@ -73,9 +73,7 @@ end
             @test v2 == vref
         end
     end
-end
-
-
+end;
 
 @testset "rand_with_NaNs and negative Floats" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
@@ -151,7 +149,7 @@ end;
 
 @testset "short_strings" begin
     for n in [(1:31)..., 100, 999, 1000, 1001]
-        for len in 2:17
+        for len in 0:17
             for order in [Base.Order.Forward, Base.Order.Reverse]
             v = [randstring(len) for _ in 1:n]
             vo  = OffsetArray(v, (1:n).+100)
@@ -183,4 +181,4 @@ end;
             end            
         end
     end
-end
+end;
