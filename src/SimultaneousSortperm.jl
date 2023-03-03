@@ -73,6 +73,7 @@ Base.@propagate_inbounds function Base.setindex!(v::WithoutMissingVector, x, i)
     v
 end
 Base.size(v::WithoutMissingVector) = size(v.data)
+Base.axes(v::WithoutMissingVector) = axes(v.data)
 
 
 function sort_equal_subarrays!(v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
@@ -214,8 +215,7 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
     hi = lastindex(v)
     if nonmissingtype(eltype(v)) != eltype(v) && o isa DirectOrdering && hi>lo
         lo_i, hi_i = lo, hi
-        offset = firstindex(v)-1;
-        for (i,x) in zip(eachindex(v).-offset, v)
+        for (i,x) in zip(eachindex(v), v)
             if ismissing(x) == (o isa ReverseOrdering) # should i go at the beginning?
                 ix[lo_i] = i
                 lo_i += 1
@@ -230,12 +230,12 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
         else
             hi = hi_i
         end
+        hi <= lo && return # all items were missing
         vcontainsmissing = true
     else
         ix .= LinearIndices(v)
         vcontainsmissing = false
     end
-
     _sortperm_short_string_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
 end
 

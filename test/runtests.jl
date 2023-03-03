@@ -78,7 +78,7 @@ end;
 @testset "rand_with_NaNs and negative Floats" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
         v = randn_with_nans(n,0.1)
-        vo = OffsetArray(rand(Int,n), (1:n).+100)
+        vo = OffsetArray(copy(v), (1:n).+100)
         for order in [Base.Order.Forward, Base.Order.Reverse]
 
             pref = sortperm(v, order=order)
@@ -94,25 +94,25 @@ end;
             @test reinterpret(UInt64,v2) == reinterpret(UInt64,vref)
 
             # offset
-            pref = sortperm(vo, order=order)
-            vref = sort(vo, order=order)
+            prefo = sortperm(vo, order=order)
+            vrefo = sort(vo, order=order)
 
-            p = ssortperm(vo, order=order)
-            @test p == pref
+            po = ssortperm(vo, order=order)
+            @test po == prefo
 
             v2o = copy(vo)
-            p .= 0
-            ssortperm!!(p, v2o, order=order)
-            @test p == pref
-            @test v2o == vref
+            po .= 0
+            ssortperm!!(po, v2o, order=order)
+            @test po == prefo
+            @test reinterpret(UInt64,v2o) == reinterpret(UInt64,vrefo)
         end
     end
 end;
 
 @testset "missing" begin
-    for n in [(1:31)..., 100, 999, 1000, 1001]
+    for n in [(0:31)..., 100, 999, 1000, 1001]
         v = [rand(1:100) < 50 ? missing : randn_with_nans(1,0.1)[1] for _ in 1:n]
-        vo = OffsetArray(rand(Int,n), (1:n).+100)
+        vo = OffsetArray(copy(v), (1:n).+100)
         for order in [Base.Order.Forward, Base.Order.Reverse]
             pref = sortperm(v, order=order)
             vref = sort(v, order=order)
@@ -132,27 +132,24 @@ end;
             end
 
             # offset
-            pref = sortperm(vo, order=order)
-            vref = sort(vo, order=order)
-
-            p = ssortperm(vo, order=order)
-            @test p == pref
+            po = ssortperm(vo, order=order)
+            @test issorted(vo[po], order=order)
 
             v2o = copy(vo)
-            p .= 0
-            ssortperm!!(p, v2o, order=order)
-            @test p == pref
-            @test v2o == vref
+            po .= 0
+            ssortperm!!(po, v2o, order=order)
+            @test issorted(vo[po], order=order)
+            @test issorted(v2o, order=order)
         end
     end
 end;
 
 @testset "short_strings" begin
-    for n in [(1:31)..., 100, 999, 1000, 1001]
+    for n in [(0:31)..., 100, 999, 1000, 1001]
         for len in 0:17
             for order in [Base.Order.Forward, Base.Order.Reverse]
-            v = [randstring(len) for _ in 1:n]
-            vo  = OffsetArray(v, (1:n).+100)
+            v = [randstring(rand(0:len)) for _ in 1:n]
+            vo  = OffsetArray(copy(v), (1:n).+100)
             
             pref = sortperm(v, order=order)
             vref = sort(v, order=order)
@@ -167,17 +164,51 @@ end;
             @test v2 == vref
             
             # offset
-            pref = sortperm(vo, order=order)
-            vref = sort(vo, order=order)
+            prefo = sortperm(vo, order=order)
+            vrefo = sort(vo, order=order)
             
-            p = ssortperm(vo, order=order)
-            @test p == pref
+            po = ssortperm(vo, order=order)
+            @test po == prefo
             
             v2o = copy(vo)
-            p .= 0
-            ssortperm!!(p, v2o, order=order)
+            po .= 0
+            ssortperm!!(po, v2o, order=order)
+            @test po == prefo
+            @test v2o == vrefo
+            end            
+        end
+    end
+end;
+
+@testset "short_strings_with_missing" begin
+    for n in [(0:31)..., 100, 999, 1000, 1001]
+        for len in 0:17
+            for order in [Base.Order.Forward, Base.Order.Reverse]
+            v = [rand(1:100) < 50 ? missing : randstring(rand(0:len)) for _ in 1:n]
+            vo  = OffsetArray(copy(v), (1:n).+100)
+            
+            pref = sortperm(v, order=order)
+            vref = sort(v, order=order)
+
+            p = ssortperm(v, order=order)
             @test p == pref
-            @test v2o == vref
+
+            v2 = copy(v)
+            p .= 0
+            ssortperm!!(p, v2, order=order)
+            @test p == pref
+            @test ismissing.(v2) == ismissing.(vref)
+            @test issorted(v2, order=order)
+
+            # offset
+            po = ssortperm(vo, order=order)
+            @test issorted(vo[po], order=order)
+
+            v2o = copy(vo)
+            po .= 0
+            ssortperm!!(po, v2o, order=order)
+            @test issorted(vo[po], order=order)
+            @test issorted(v2o, order=order)
             end            
         end
     end
