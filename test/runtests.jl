@@ -14,6 +14,17 @@ function randn_with_nans(n,p)
     return v
 end
 
+@testset "strings" begin
+    for n in [5,50,200]
+        for len in [5,50,200]
+            v = [String(rand(UInt8.([0,1,2,100,253,254,255]),rand(0:len))) for _ in 1:n]
+            p = ssortperm(v)
+            issorted(v[p]) || @show Base.CodeUnits.(v[p])
+            @test issorted(v[p])
+        end
+    end
+end
+
 @testset "SimultaneousSortperm.jl" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
         for T in [UInt16, Int, Float64], rev in [false, true], lt in [isless, >]
@@ -182,15 +193,16 @@ end;
 
 @testset "short_strings_with_missing" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
-        for len in 0:17
+        for len in 0:16
             for order in [Base.Order.Forward, Base.Order.Reverse]
-            v = [rand(1:100) < 50 ? missing : randstring(rand(0:len)) for _ in 1:n]
+            v = [rand(1:100) < 50 ? missing : String(rand(UInt8.([0,1,2,100,253,254,255]),rand(0:len))) for _ in 1:n]
             vo  = OffsetArray(copy(v), (1:n).+100)
             
             pref = sortperm(v, order=order)
             vref = sort(v, order=order)
 
             p = ssortperm(v, order=order)
+            p == pref || println(v)
             @test p == pref
 
             v2 = copy(v)
