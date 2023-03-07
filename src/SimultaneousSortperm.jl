@@ -136,66 +136,70 @@ function _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering
     
 end
 
-function uintmap_string(s::String,T::Type)
-    x = zero(T)
+# map string to UInt starting at firstcodeunit.
+# Maps at most sizeof(T) - 1 codeunits. 
+# Use uANS to encode 257 Symbols per codeunint.
+# Extra Symbol is below "\0" to distinguish "" from "\0".
+function uintmap_string(s::String, ::Type{T}, firstcodeunit::Int) where T<:Unsigned
+    last_possible_codeunint = sizeof(T) + firstcodeunit - 2
     len = ncodeunits(s)
-    lenType = sizeof(T)
-    uselen = min(len,lenType) 
-    shift = 8lenType
-    for i = 1:uselen
-        shift -= 8
-        @inbounds x |= T(codeunit(s, i)) << shift        
+    lastcodeunint = min(len, last_possible_codeunint)
+    x = zero(T)
+    i = firstcodeunit
+    while i <= lastcodeunint
+        x *= T(257)
+        @inbounds x += T(codeunit(s, i)) + T(1)
+        i += 1
     end
-    x
+    while i <= last_possible_codeunint
+        x *= T(257)
+        i += 1
+    end
+    x, len
 end
+
+uintmap_string(s::String, ::Type{T}) where T<:Unsigned = uintmap_string(s, T, 1)[1]
 
 function uinttype_of_size(x::Integer)
-    @assert 1 <= x <= 16
-    (UInt8, UInt16, UInt32, UInt32,
-    UInt64, UInt64,UInt64, UInt64,
-    UInt128, UInt128, UInt128, UInt128,
-    UInt128, UInt128, UInt128, UInt128)[x]
+    @assert 1 <= x
+    (UInt16, UInt32, UInt32, UInt64,
+    UInt64, UInt64, UInt64, UInt128)[min(x,8)]
 end
 
-function uintmap_strings!(v, vs::AbstractArray{String}, lo::Int, hi::Int, ix)
+# map codeunits starting at firstcodeunit for some strings (from recursion depth 2 on)
+function uintmap_strings!(v, vs::AbstractArray{String}, lo::Int, hi::Int, ix, firstcodeunint)
+    maxlength = 0
     @inbounds for i in lo:hi
-        v[i] = uintmap_string(vs[ix[i]],eltype(v))
+        v[i], len = uintmap_string(vs[ix[i]], eltype(v), firstcodeunint)
+        maxlength = max(maxlength, len)
     end
+    maxlength
 end
 
-function uintmap_strings!(v, vs::AbstractArray{String})
-    @inbounds for i in eachindex(v)
-        v[i] = uintmap_string(vs[i],eltype(v))
+# map first codeunits of some strings (after missing optimization)
+function uintmap_strings(vs::AbstractArray{String}, ::Type{T}, lo::Int, hi::Int, ix) where T
+    v = similar(Vector{T}, axes(vs))
+    @inbounds for i in lo:hi
+        v[i] = uintmap_string(vs[ix[i]],T)
     end
-end
-
-function uintmap_strings(vs::AbstractArray{String}, T::Type, lo::Int, hi::Int, ix)
-    v = similar(Vector{T}, axes(vs))
-    uintmap_strings!(v, vs, lo, hi, ix)
-    v
-end
-
-function uintmap_strings(vs::AbstractArray{String}, T::Type)
-    v = similar(Vector{T}, axes(vs))
-    uintmap_strings!(v, vs)
     v
 end
 
 maxncodeunints(v::AbstractArray{String}) = mapreduce(ncodeunits, max, v, init=0)
 maxncodeunints(v::AbstractArray{Union{String,Missing}}) = mapreduce(x-> ismissing(x) ? 0 : ncodeunits(x), max, v, init=0)
 
-function _sortperm_short_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
     offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
     offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v)) <= 16
+    if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v))
         T = uinttype_of_size(maxlength)
         if vcontainsmissing    
             vu = uintmap_strings(v, T, lo, hi, ix)
         else
-            vu = uintmap_strings(v,T)
+            vu = map(s->uintmap_string(s, T), v)
         end
         vs = StructArray{Tuple{T,eltype(ix)}}(val=vu, ix=ix)
-        _sortperm!!(ix, vu, vs, lo, hi, o::Ordering, offsets_l, offsets_r) 
+        _sortperm_string!!(ix, vu, vs, v, lo, hi, T, 1, maxlength, o::Ordering, offsets_l, offsets_r) 
     else
         if vcontainsmissing
             vv = similar(WithoutMissingVector(v, unsafe=true))
@@ -209,6 +213,29 @@ function _sortperm_short_string_optimization!(ix, v, lo::Int, hi::Int, o::Orderi
         _sortperm!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
     end
 end
+
+function _sortperm_string!!(ix, v, vs, v_string, lo, hi, ::Type{T}, firstcodeunint, maxlength, o::Ordering, offsets_l, offsets_r) where T
+    if firstcodeunint > maxlength
+        return _sortperm!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    end
+    pdq_loop!(vs, lo, hi, Base.Order.By(x->x[1], o), offsets_l, offsets_r)
+    # sort equal subarrays by next codeunints
+    i = lo
+    while i < hi
+        if !lt(o, v[i], v[i+1]) 
+            first_equal = i
+            while i < hi && !lt(o, v[i], v[i+1])
+                i += 1
+            end
+            last_equal = i
+            maxlength = uintmap_strings!(v, v_string, first_equal, last_equal, ix, firstcodeunint+sizeof(T)-1)
+            _sortperm_string!!(ix, v, vs, v_string, first_equal, last_equal, T, firstcodeunint+sizeof(T)-1, maxlength, o::Ordering, offsets_l, offsets_r)
+        end
+        i += 1
+    end
+    
+end
+
 
 function _sortperm_Missing_optimization!(ix, v, o::Ordering)
     lo = firstindex(v)
@@ -236,7 +263,7 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
         ix .= LinearIndices(v)
         vcontainsmissing = false
     end
-    _sortperm_short_string_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
+    _sortperm_string_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
 end
 
 """
