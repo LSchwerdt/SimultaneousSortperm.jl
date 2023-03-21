@@ -187,7 +187,7 @@ function uintmap_strings(vs::AbstractArray{String}, ::Type{T}, lo::Int, hi::Int,
     v
 end
 
-# map fisrt codeunits of all strings
+# map first codeunits of all strings
 function uintmap_strings(vs::AbstractArray{String}, ::Type{T}) where T
     map(s->uintmap_string(s, T), vs)
 end
