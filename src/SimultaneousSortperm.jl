@@ -191,7 +191,9 @@ maxncodeunints(v::AbstractArray{Union{String,Missing}}) = mapreduce(x-> ismissin
 function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
     offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
     offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v))
+    if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v)) <= 45
+        # map strings to UInts for faster comparisons
+        # this can be slower for strings with long common prefixes -> use only if maxlength <= 45
         T = uinttype_of_size(maxlength)
         if vcontainsmissing    
             vu = uintmap_strings(v, T, lo, hi, ix)
