@@ -121,6 +121,9 @@ end;
     end
 end;
 
+nan_and_not_missing(x) = !ismissing(x) ? isnan(x) : false
+not_nan_and_not_missing(x) = !ismissing(x) ? !isnan(x) : false
+
 @testset "missing" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
         v = [rand(1:100) < 50 ? missing : randn_with_nans(1,0.1)[1] for _ in 1:n]
@@ -139,8 +142,21 @@ end;
             im_v2 = ismissing.(v2)
             im_vref = ismissing.(vref)
             @test im_v2 == im_vref
-            if any(.!im_vref) > 0
-                @test reinterpret(UInt64,Float64.(v2[.!im_v2])) == reinterpret(UInt64,Float64.(vref[.!im_vref]))
+            if any(.!im_vref)
+                # test NaNs and non NaNs seperately
+                nonnan_vref = map(not_nan_and_not_missing, vref)
+                nonnan_v2 = map(not_nan_and_not_missing, v2)
+                if any(nonnan_vref)
+                    @test reinterpret(UInt64,Float64.(v2[nonnan_v2])) == reinterpret(UInt64,Float64.(vref[nonnan_vref]))
+                end
+                # stability of NaNs is not guaranteed
+                # and not satisfied in all versions of Base.sort
+                # -> compare with input vector
+                nan_v = map(nan_and_not_missing, v)
+                nan_v2 = map(nan_and_not_missing, v2)
+                if any(nan_v)
+                    @test reinterpret(UInt64,Float64.(v2[nan_v2])) == reinterpret(UInt64,Float64.(v[nan_v]))
+                end
             end
 
             # offset
