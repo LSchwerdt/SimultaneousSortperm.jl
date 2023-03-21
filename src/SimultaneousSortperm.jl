@@ -187,6 +187,11 @@ function uintmap_strings(vs::AbstractArray{String}, ::Type{T}, lo::Int, hi::Int,
     v
 end
 
+# map fisrt codeunits of all strings
+function uintmap_strings(vs::AbstractArray{String}, ::Type{T}) where T
+    map(s->uintmap_string(s, T), vs)
+end
+
 maxncodeunints(v::AbstractArray{String}) = mapreduce(ncodeunits, max, v, init=0)
 maxncodeunints(v::AbstractArray{Union{String,Missing}}) = mapreduce(x-> ismissing(x) ? 0 : ncodeunits(x), max, v, init=0)
 
@@ -200,7 +205,7 @@ function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vc
         if vcontainsmissing
             vu = uintmap_strings(v, T, lo, hi, ix)
         else
-            vu = map(s->uintmap_string(s, T), v)
+            vu = uintmap_strings(v, T)
         end
         vs = StructArray{Tuple{T,eltype(ix)}}(val=vu, ix=ix)
         _sortperm_string!!(ix, vu, vs, v, lo, hi, T, 1, maxlength, o::Ordering, offsets_l, offsets_r)
