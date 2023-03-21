@@ -31,6 +31,7 @@ end
             for order in [Base.Order.Forward, Base.Order.Reverse], by in [identity, x->x÷100]
 
                 skiptest = VERSION < v"1.9.0-rc1" && T != Int && by != identity && n > 20
+                # Base.sort earlier than v"1.9.0-rc1" errors due to https://github.com/JuliaLang/julia/issues/48862
                 # broken depending on rng -> infeasible to list all combinations
 
                 v = rand(T,n)

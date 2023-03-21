@@ -4,7 +4,7 @@
 
 The `SimultaneousSortperm` package provides functions that mimic `sortperm` and `sortperm!`, but achieve better performance for large input sizes by simultaneously sorting the data and index vector.
 First the data is sorted using the unstable Pattern-Defeating-Quicksort algorithm while simultaneously moving the corresponding indices.
-In a second pass, all subarrays with equal elements are sorted according to their indices to ensure stability.
+In a second pass, all subarrays with equal data elements are sorted according to their indices to ensure stability.
 
 The following functions are exported:
 
@@ -22,9 +22,8 @@ More benchmark results can be found [here](https://github.com/LSchwerdt/MiscJuli
 ## Roadmap
 
 - Use pattern-defeating-quicksort from SortingAlgorithms when PR is merged.
-- Add special optimizations for functions that do not sort the input. 
-- Add optimization for small Integers?
-- Dispatch to `sortperm` / `sortperm!` when they are faster.
 - Implement `dims` keyword (added to `sortperm` in Julia 1.9).
+- Add optimization for small Integers?
+- Dispatch to `sortperm` / `sortperm!` when they are faster (very small inputs)?
 - Contribute to Base / SortingAlgorithms
 - (Include option to use different sorting algorithms?)

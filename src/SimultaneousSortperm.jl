@@ -139,7 +139,8 @@ end
 # map string to UInt starting at firstcodeunit.
 # Maps at most sizeof(T) - 1 codeunits. 
 # Use uANS to encode 257 Symbols per codeunint.
-# Extra Symbol is below "\0" to distinguish "" from "\0".
+# Extra Symbol is below '\0' to distinguish "" from "\0".
+# uANS: https://arxiv.org/abs/1311.2540
 function uintmap_string(s::String, ::Type{T}, firstcodeunit::Int) where T<:Unsigned
     last_possible_codeunint = sizeof(T) + firstcodeunit - 2
     len = ncodeunits(s)
@@ -160,6 +161,7 @@ end
 
 uintmap_string(s::String, ::Type{T}) where T<:Unsigned = uintmap_string(s, T, 1)[1]
 
+# uinttype that can fit min(x,8) codeunints
 function uinttype_of_size(x::Integer)
     @assert 1 <= x
     (UInt16, UInt32, UInt32, UInt64,
