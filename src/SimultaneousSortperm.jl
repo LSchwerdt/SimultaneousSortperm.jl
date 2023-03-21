@@ -219,7 +219,7 @@ function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vc
             vv = copymutable(v)
         end
         vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix)
-        _sortperm!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+        _sortperm_IEEEFloat_optimization!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
     end
 end
 
