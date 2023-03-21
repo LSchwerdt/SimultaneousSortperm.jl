@@ -79,7 +79,7 @@ Base.axes(v::WithoutMissingVector) = axes(v.data)
 function sort_equal_subarrays!(v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
     i = lo
     while i < hi
-        if !lt(o, v[i], v[i+1]) 
+        if !lt(o, v[i], v[i+1])
             first_equal = i
             while i < hi && !lt(o, v[i], v[i+1])
                 i += 1
@@ -107,7 +107,7 @@ end
 function _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, was_unstable)
     if is_concrete_IEEEFloat(eltype(v)) && o isa DirectOrdering
         lo2, hi2 = send_to_end!(x->isnan(x[1]), vs, o, true; lo, hi)
-        if was_unstable # sort NaNs by index, because previous optimization was unstable 
+        if was_unstable # sort NaNs by index, because previous optimization was unstable
             # only one of them does work depending on Forward/Reverse Ordering
             pdq_loop!(vs, hi2+1, hi, Base.Order.By(x->x[2]), offsets_l, offsets_r)
             pdq_loop!(vs, lo, lo2-1, Base.Order.By(x->x[2]), offsets_l, offsets_r)
@@ -133,11 +133,11 @@ function _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering
     else
         _sortperm_IEEEFloat_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
     end
-    
+
 end
 
 # map string to UInt starting at firstcodeunit.
-# Maps at most sizeof(T) - 1 codeunits. 
+# Maps at most sizeof(T) - 1 codeunits.
 # Use uANS to encode 257 Symbols per codeunint.
 # Extra Symbol is below '\0' to distinguish "" from "\0".
 # uANS: https://arxiv.org/abs/1311.2540
@@ -197,13 +197,13 @@ function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vc
         # map strings to UInts for faster comparisons
         # this can be slower for strings with long common prefixes -> use only if maxlength <= 45
         T = uinttype_of_size(maxlength)
-        if vcontainsmissing    
+        if vcontainsmissing
             vu = uintmap_strings(v, T, lo, hi, ix)
         else
             vu = map(s->uintmap_string(s, T), v)
         end
         vs = StructArray{Tuple{T,eltype(ix)}}(val=vu, ix=ix)
-        _sortperm_string!!(ix, vu, vs, v, lo, hi, T, 1, maxlength, o::Ordering, offsets_l, offsets_r) 
+        _sortperm_string!!(ix, vu, vs, v, lo, hi, T, 1, maxlength, o::Ordering, offsets_l, offsets_r)
     else
         if vcontainsmissing
             vv = similar(WithoutMissingVector(v, unsafe=true))
@@ -213,7 +213,7 @@ function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vc
         else
             vv = copymutable(v)
         end
-        vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix) 
+        vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix)
         _sortperm!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
     end
 end
@@ -226,7 +226,7 @@ function _sortperm_string!!(ix, v, vs, v_string, lo, hi, ::Type{T}, firstcodeuni
     # sort equal subarrays by next codeunints
     i = lo
     while i < hi
-        if !lt(o, v[i], v[i+1]) 
+        if !lt(o, v[i], v[i+1])
             first_equal = i
             while i < hi && !lt(o, v[i], v[i+1])
                 i += 1
@@ -237,9 +237,8 @@ function _sortperm_string!!(ix, v, vs, v_string, lo, hi, ::Type{T}, firstcodeuni
         end
         i += 1
     end
-    
-end
 
+end
 
 function _sortperm_Missing_optimization!(ix, v, o::Ordering)
     lo = firstindex(v)

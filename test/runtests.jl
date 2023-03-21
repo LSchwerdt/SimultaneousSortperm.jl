@@ -71,7 +71,7 @@ end;
 @testset "OffsetArrays" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
         for offset in [-n , -1, 0, 1, n]
-            v = OffsetArray(rand(Int,n), (1:n).+offset) 
+            v = OffsetArray(rand(Int,n), (1:n).+offset)
             pref = sortperm(v)
             vref = sort(v)
 
@@ -162,43 +162,43 @@ end;
             for order in [Base.Order.Forward, Base.Order.Reverse]
             v = [randstring(rand(0:len)) for _ in 1:n]
             vo  = OffsetArray(copy(v), (1:n).+100)
-            
+
             pref = sortperm(v, order=order)
             vref = sort(v, order=order)
-            
+
             p = ssortperm(v, order=order)
             @test p == pref
-            
+
             v2 = copy(v)
             p .= 0
             ssortperm!!(p, v2, order=order)
             @test p == pref
             @test v2 == vref
-            
+
             # offset
             prefo = sortperm(vo, order=order)
             vrefo = sort(vo, order=order)
-            
+
             po = ssortperm(vo, order=order)
             @test po == prefo
-            
+
             v2o = copy(vo)
             po .= 0
             ssortperm!!(po, v2o, order=order)
             @test po == prefo
             @test v2o == vrefo
-            end            
+            end
         end
     end
 end;
 
 @testset "short_strings_with_missing" begin
     for n in [(0:31)..., 100, 999, 1000, 1001]
-        for len in 0:16
+        for len in 0:17
             for order in [Base.Order.Forward, Base.Order.Reverse]
             v = [rand(1:100) < 50 ? missing : String(rand(UInt8.([0,1,2,100,253,254,255]),rand(0:len))) for _ in 1:n]
             vo  = OffsetArray(copy(v), (1:n).+100)
-            
+
             pref = sortperm(v, order=order)
             vref = sort(v, order=order)
 
@@ -222,7 +222,7 @@ end;
             ssortperm!!(po, v2o, order=order)
             @test issorted(vo[po], order=order)
             @test issorted(v2o, order=order)
-            end            
+            end
         end
     end
 end;
