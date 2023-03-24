@@ -168,7 +168,7 @@ function uinttype_of_size(x::Integer)
 end
 
 # map codeunits starting at firstcodeunit for some strings (from recursion depth 2 on)
-function uintmap_strings!(v, vs::AbstractArray{String}, lo::Int, hi::Int, ix, firstcodeunint)
+function uintmap_strings!(v, vs::AbstractVector{String}, lo::Int, hi::Int, ix, firstcodeunint)
     maxlength = 0
     @inbounds for i in lo:hi
         v[i], len = uintmap_string(vs[ix[i]], eltype(v), firstcodeunint)
@@ -178,7 +178,7 @@ function uintmap_strings!(v, vs::AbstractArray{String}, lo::Int, hi::Int, ix, fi
 end
 
 # map first codeunits of some strings (after missing optimization)
-function uintmap_strings(vs::AbstractArray{String}, ::Type{T}, lo::Int, hi::Int, ix) where T
+function uintmap_strings(vs::AbstractVector{String}, ::Type{T}, lo::Int, hi::Int, ix) where T
     v = similar(Vector{T}, axes(vs))
     @inbounds for i in lo:hi
         v[i] = uintmap_string(vs[ix[i]],T)
@@ -187,15 +187,15 @@ function uintmap_strings(vs::AbstractArray{String}, ::Type{T}, lo::Int, hi::Int,
 end
 
 # map first codeunits of all strings
-function uintmap_strings(vs::AbstractArray{String}, ::Type{T}) where T
+function uintmap_strings(vs::AbstractVector{String}, ::Type{T}) where T
     map(s->uintmap_string(s, T), vs)
 end
 
-maxncodeunints(v::AbstractArray{String}) = mapreduce(ncodeunits, max, v, init=0)
-maxncodeunints(v::AbstractArray{Union{String,Missing}}) = mapreduce(x-> ismissing(x) ? 0 : ncodeunits(x), max, v, init=0)
+maxncodeunints(v::AbstractVector{String}) = mapreduce(ncodeunits, max, v, init=0)
+maxncodeunints(v::AbstractVector{Union{String,Missing}}) = mapreduce(x-> ismissing(x) ? 0 : ncodeunits(x), max, v, init=0)
 
 # optimization for short strings (length <=45 codeunints)
-function _sortperm_type_optimization!(ix, v::Union{AbstractArray{String},AbstractArray{Union{String,Missing}}}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+function _sortperm_type_optimization!(ix, v::Union{AbstractVector{String},AbstractVector{Union{String,Missing}}}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
     if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v)) <= 45
         # map strings to UInts for faster comparisons
         # this can be slower for strings with long common prefixes -> use only if maxlength <= 45
@@ -214,7 +214,7 @@ function _sortperm_type_optimization!(ix, v::Union{AbstractArray{String},Abstrac
     end
 end
 
-function _sortperm_type_optimization!(ix, v::AbstractArray{Bool}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+function _sortperm_type_optimization!(ix, v::AbstractVector{Bool}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
     if o isa DirectOrdering
         _sortperm_bool_optimization!(ix, v, lo, hi, o)
     else
@@ -264,7 +264,7 @@ function sortperm_int_range!(ix, v::AbstractVector{<:Integer}, rangelen, minval)
 end
 
 # based on BoolOptimization from Base.sort
-function _sortperm_bool_optimization!(ix, v::AbstractArray{Bool}, lo::Int, hi::Int, o::Ordering)
+function _sortperm_bool_optimization!(ix, v::AbstractVector{Bool}, lo::Int, hi::Int, o::Ordering)
     first = lt(o, false, true) ? false : lt(o, true, false) ? true : return ix
     count = 0
     @inbounds for i in lo:hi
@@ -287,7 +287,7 @@ function _sortperm_bool_optimization!(ix, v::AbstractArray{Bool}, lo::Int, hi::I
 end
 
 # fallback if no allocating optimization for special types is used
-_sortperm_type_optimization!(ix, v::AbstractArray, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool) = 
+_sortperm_type_optimization!(ix, v::AbstractVector, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool) = 
 _sortperm_finish_Missing_optimization!(ix, v, lo, hi, o, vcontainsmissing)
 
 
@@ -358,7 +358,7 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
 end
 
 """
-    ssortperm!!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+    ssortperm!!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     Like [`ssortperm`](@ref), but also sorts v and accepts a preallocated index vector or array `ix` with the same `axes` as `v`.
     `ix` is initialized to contain the values `LinearIndices(v)`.
 # Examples
@@ -377,7 +377,7 @@ julia> v
  3
 ```
 """
-function ssortperm!!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+function ssortperm!!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     ix .= LinearIndices(v)
     vs = StructArray{Tuple{eltype(v),eltype(ix)}}(val=v, ix=ix)
     o = ord(lt, by, rev ? true : nothing, order)
@@ -390,7 +390,7 @@ function ssortperm!!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Orde
 end
 
 """
-    ssortperm!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+    ssortperm!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     Like [`ssortperm`](@ref), but accepts a preallocated index vector or array `ix` with the same `axes` as `v`.
     `ix` is initialized to contain the values `LinearIndices(v)`.
 # Examples
@@ -409,14 +409,14 @@ julia> v[ix]
  3
 ```
 """
-function ssortperm!(ix, v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+function ssortperm!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     o = ord(lt, by, rev ? true : nothing, order)
     _sortperm_Missing_optimization!(ix, v, o::Ordering)
     ix
 end
 
 """
-    ssortperm!(v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+    ssortperm!(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     Like [`ssortperm`](@ref), but also sorts v.
 # Examples
 ```jldoctest
@@ -433,13 +433,13 @@ julia> v
  3
 ```
 """
-function ssortperm!(v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+function ssortperm!(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     ix = allocate_index_vector(v)
     ssortperm!!(ix, v, lt=lt, by=by, rev=rev, order=order)
 end
 
 """
-    ssortperm(v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+    ssortperm(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
 Return a permutation vector `p` that puts `v[p]` in sorted order.
 The order is specified using the same keywords as [`sort!`](@ref). The permutation is guaranteed to be stable.
 See also [`ssortperm!`](@ref),[`ssortperm!!`](@ref),
@@ -459,7 +459,7 @@ julia> v[p]
  3
 ```
 """
-function ssortperm(v; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+function ssortperm(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     ix = allocate_index_vector(v)
     ssortperm!(ix, v, lt=lt, by=by, rev=rev, order=order)
 end
