@@ -6,9 +6,8 @@ include("pdqsort.jl")
 
 using StructArrays
 using StaticArrays
-
 using Base.Order
-using Base: copymutable, uinttype
+using Base: copymutable, uinttype, sub_with_overflow, add_with_overflow
 
 export ssortperm!!, ssortperm!, ssortperm
 
@@ -195,9 +194,8 @@ end
 maxncodeunints(v::AbstractArray{String}) = mapreduce(ncodeunits, max, v, init=0)
 maxncodeunints(v::AbstractArray{Union{String,Missing}}) = mapreduce(x-> ismissing(x) ? 0 : ncodeunits(x), max, v, init=0)
 
-function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
-    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+# optimization for short strings (length <=45 codeunints)
+function _sortperm_type_optimization!(ix, v::Union{AbstractArray{String},AbstractArray{Union{String,Missing}}}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
     if eltype(v) === String && o isa DirectOrdering && 1 <= (maxlength = maxncodeunints(v)) <= 45
         # map strings to UInts for faster comparisons
         # this can be slower for strings with long common prefixes -> use only if maxlength <= 45
@@ -208,19 +206,104 @@ function _sortperm_string_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vc
             vu = uintmap_strings(v, T)
         end
         vs = StructArray{Tuple{T,eltype(ix)}}(val=vu, ix=ix)
+        offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+        offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
         _sortperm_string!!(ix, vu, vs, v, lo, hi, T, 1, maxlength, o::Ordering, offsets_l, offsets_r)
     else
-        if vcontainsmissing
-            vv = similar(WithoutMissingVector(v, unsafe=true))
-            for i in lo:hi
-                vv[i] = v[ix[i]]
-            end
-        else
-            vv = copymutable(v)
-        end
-        vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix)
-        _sortperm_IEEEFloat_optimization!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
+        _sortperm_finish_Missing_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
     end
+end
+
+function _sortperm_type_optimization!(ix, v::AbstractArray{Bool}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+    if o isa DirectOrdering
+        _sortperm_bool_optimization!(ix, v, lo, hi, o)
+    else
+        _sortperm_finish_Missing_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+    end
+end
+
+# from Base.sort
+function _sortperm_type_optimization!(ix, v::AbstractVector{<:Integer}, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+    if o === Forward
+        n = length(v)
+        if n > 1
+            min, max = extrema(v)
+            (diff, o1) = sub_with_overflow(max, min)
+            (rangelen, o2) = add_with_overflow(diff, oneunit(diff))
+            if !(o1 || o2)::Bool && rangelen < div(n,2)
+                return sortperm_int_range!(ix, v, rangelen, min)
+            end
+        end
+    end
+    _sortperm_finish_Missing_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+end
+
+# sortperm for vectors of few unique integers
+# based on code from Base.sort
+function sortperm_int_range!(ix, v::AbstractVector{<:Integer}, rangelen, minval)
+    offs = 1 - minval
+
+    counts = fill(0, rangelen+1)
+    counts[1] = firstindex(v)
+    @inbounds for i = eachindex(v)
+        counts[v[i] + offs + 1] += 1
+    end
+
+    #cumsum!(counts, counts)
+    @inbounds for i = 2:lastindex(counts)
+        counts[i] += counts[i-1]
+    end
+
+    @inbounds for i = eachindex(ix)
+        label = v[i] + offs
+        ix[counts[label]] = i
+        counts[label] += 1
+    end
+
+    return ix
+end
+
+# based on BoolOptimization from Base.sort
+function _sortperm_bool_optimization!(ix, v::AbstractArray{Bool}, lo::Int, hi::Int, o::Ordering)
+    first = lt(o, false, true) ? false : lt(o, true, false) ? true : return ix
+    count = 0
+    @inbounds for i in lo:hi
+        if v[i] == first
+            count += 1
+        end
+    end
+    j = lo
+    k = lo + count
+    @inbounds for i in lo:hi
+        if v[i] == first
+            ix[j] = i
+            j += 1
+        else
+            ix[k] = i
+            k += 1
+        end
+    end
+    ix
+end
+
+# fallback if no allocating optimization for special types is used
+_sortperm_type_optimization!(ix, v::AbstractArray, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool) = 
+_sortperm_finish_Missing_optimization!(ix, v, lo, hi, o, vcontainsmissing)
+
+
+function _sortperm_finish_Missing_optimization!(ix, v, lo::Int, hi::Int, o::Ordering, vcontainsmissing::Bool)
+    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    if vcontainsmissing
+        vv = similar(WithoutMissingVector(v, unsafe=true)) 
+        for i in lo:hi
+            vv[i] = v[ix[i]]
+        end
+    else
+        vv = copymutable(v)
+    end
+    vs = StructArray{Tuple{eltype(vv),eltype(ix)}}(val=vv, ix=ix)
+    _sortperm_IEEEFloat_optimization!!(ix, vv, vs, lo, hi, o::Ordering, offsets_l, offsets_r, false)
 end
 
 function _sortperm_string!!(ix, v, vs, v_string, lo, hi, ::Type{T}, firstcodeunint, maxlength, o::Ordering, offsets_l, offsets_r) where T
@@ -271,7 +354,7 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
         ix .= LinearIndices(v)
         vcontainsmissing = false
     end
-    _sortperm_string_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
+    _sortperm_type_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
 end
 
 """
