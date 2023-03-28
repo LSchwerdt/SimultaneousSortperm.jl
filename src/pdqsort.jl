@@ -435,7 +435,7 @@ function pdqsort_loop!(v::AbstractVector, lo::Integer, hi::Integer, a::PatternDe
     @inbounds while true
         len = hi - lo + 1
         # Insertion sort is faster for small arrays.
-        if len < PDQ_SMALL_THRESHOLD
+        if len <= PDQ_SMALL_THRESHOLD
             if leftmost
                 sort!(v, lo, hi, InsertionSort, o)
             else
@@ -448,11 +448,6 @@ function pdqsort_loop!(v::AbstractVector, lo::Integer, hi::Integer, a::PatternDe
         # use hi+1 to ensure reverse sorted list is swapped perfectly
         m = midpoint(lo, hi+1)
         if len > PDQ_NINTHER_THRESHOLD
-            #if len > 8*1024
-            #    sort3!(v, m-4, m-1, m+2, o)
-            #    sort3!(v, m-3, m,   m+3, o)
-            #    sort3!(v, m-2, m+1, m+4, o)
-            #end
             selectpivot_ninther!(v, lo, m, hi, o)
         else
             sort3!(v, m, lo, hi, o)
