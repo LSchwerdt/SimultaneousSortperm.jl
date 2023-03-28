@@ -378,6 +378,7 @@ julia> v
 ```
 """
 function ssortperm!!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+    axes(ix) == axes(v) || throw(ArgumentError("index array must have the same size/axes as the source array, $(axes(ix)) != $(axes(v))"))
     ix .= LinearIndices(v)
     vs = StructArray{Tuple{eltype(v),eltype(ix)}}(val=v, ix=ix)
     o = ord(lt, by, rev ? true : nothing, order)
@@ -391,8 +392,10 @@ end
 
 """
     ssortperm!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
-    Like [`ssortperm`](@ref), but accepts a preallocated index vector or array `ix` with the same `axes` as `v`.
-    `ix` is initialized to contain the values `LinearIndices(v)`.
+
+Like [`ssortperm`](@ref), but accepts a preallocated index vector or array `ix` with the same `axes` as `v`.
+`ix` is initialized to contain the values `LinearIndices(v)`.
+
 # Examples
 ```jldoctest
 julia> v = [3, 1, 2]; ix = [0,0,0];
@@ -410,6 +413,7 @@ julia> v[ix]
 ```
 """
 function ssortperm!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+    axes(ix) == axes(v) || throw(ArgumentError("index array must have the same size/axes as the source array, $(axes(ix)) != $(axes(v))"))
     o = ord(lt, by, rev ? true : nothing, order)
     _sortperm_Missing_optimization!(ix, v, o::Ordering)
     ix
@@ -417,7 +421,9 @@ end
 
 """
     ssortperm!(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
-    Like [`ssortperm`](@ref), but also sorts v.
+
+Like [`ssortperm`](@ref), but also sorts v.
+
 # Examples
 ```jldoctest
 julia> v = [3, 1, 2];
@@ -440,10 +446,12 @@ end
 
 """
     ssortperm(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
+
 Return a permutation vector `p` that puts `v[p]` in sorted order.
 The order is specified using the same keywords as [`sort!`](@ref). The permutation is guaranteed to be stable.
 See also [`ssortperm!`](@ref),[`ssortperm!!`](@ref),
  [`ssortperm!`](@ref), [`sortperm!`](@ref), [`partialsortperm`](@ref), [`invperm`](@ref), [`indexin`](@ref).
+
 # Examples
 ```jldoctest
 julia> v = [3, 1, 2];
@@ -462,6 +470,179 @@ julia> v[p]
 function ssortperm(v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     ix = allocate_index_vector(v)
     ssortperm!(ix, v, lt=lt, by=by, rev=rev, order=order)
+end
+
+# ssortperm with dims
+
+function ssortperm_chunks!!(ix, v, vs, n, o, offsets_l, offsets_r)
+    fst = firstindex(vs)
+    lst = lastindex(vs)
+    for lo = fst:n:lst
+        hi=lo+n-1
+        _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o, offsets_l, offsets_r)
+    end
+    ix
+end
+
+function ssortperm_dim1!!(ix::AbstractArray{Int}, A::AbstractArray, o)
+    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    Av = vec(A)
+    ixv = vec(ix)
+    vs = StructArray{Tuple{eltype(A),eltype(ix)}}(val=Av, ix=ixv)
+    n = length(axes(A, 1))
+    ssortperm_chunks!!(ixv, Av, vs, n, o, offsets_l, offsets_r)
+end
+
+"""
+    ssortperm!!(ix::AbstractArray{Int}, A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+
+Like [`ssortperm!`](@ref), but also sorts A and accepts a preallocated index vector or array `ix` with the same `axes` as `A`.
+`ix` is initialized to contain the values `LinearIndices(A)`.
+
+# Examples
+```jldoctest
+julia> A = [8 7; 5 6]; p = zeros(Int,2, 2);
+julia> ssortperm!!(p, A; dims=1); p
+2×2 Matrix{Int64}:
+ 2  4
+ 1  3
+julia> A
+2×2 Matrix{Int64}:
+ 5  6
+ 8  7
+julia> ssortperm!!(p, A; dims=2); p
+2×2 Matrix{Int64}:
+ 1  3
+ 4  2
+julia> A
+2×2 Matrix{Int64}:
+ 5  6
+ 7  8
+```
+"""
+function ssortperm!!(ix::AbstractArray{Int}, A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+    axes(ix) == axes(A) || throw(ArgumentError("index array must have the same size/axes as the source array, $(axes(ix)) != $(axes(A))"))
+    dim = dims
+    ix .= LinearIndices(A)
+    o = ord(lt, by, rev ? true : nothing, order)    
+    if dim == 1
+        ssortperm_dim1!!(ix::AbstractArray{Int}, A::AbstractArray, o)
+    else
+        pdims = (dim, setdiff(1:ndims(A), dim)...)  # put the selected dimension first
+        Ap = permutedims(A, pdims)
+        ixp = permutedims(ix, pdims)
+        ssortperm_dim1!!(ixp, Ap, o)
+        permutedims!(A, Ap, invperm(pdims))
+        permutedims!(ix, ixp, invperm(pdims))
+    end
+    ix
+end
+
+"""
+    ssortperm!(ix::AbstractArray{Int}, A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+
+Like [`ssortperm`](@ref), but accepts a preallocated index vector or array `ix` with the same `axes` as `A`.
+`ix` is initialized to contain the values `LinearIndices(A)`.
+
+# Examples
+```jldoctest
+julia> A = [8 7; 5 6]; p = zeros(Int,2, 2);
+julia> ssortperm!(p, A; dims=1); p
+2×2 Matrix{Int64}:
+ 2  4
+ 1  3
+julia> sortperm!(p, A; dims=2); p
+2×2 Matrix{Int64}:
+ 3  1
+ 2  4
+```
+"""
+function ssortperm!(ix::AbstractArray{Int}, A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+    axes(ix) == axes(A) || throw(ArgumentError("index array must have the same size/axes as the source array, $(axes(ix)) != $(axes(A))"))
+    dim = dims
+    ix .= LinearIndices(A)
+    o = ord(lt, by, rev ? true : nothing, order)
+    # do not use ssortperm!! to avoid one copy of A if dims > 1
+    if dim == 1
+        Ac = copymutable(A)
+        ssortperm_dim1!!(ix, Ac, o)
+    else
+        pdims = (dim, setdiff(1:ndims(A), dim)...)  # put the selected dimension first
+        Ap = permutedims(A, pdims)
+        ixp = permutedims(ix, pdims)
+        ssortperm_dim1!!(ixp, Ap, o)
+        permutedims!(ix, ixp, invperm(pdims))
+    end
+    ix
+end
+
+"""
+    ssortperm!(A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+
+Return a permutation vector or array `I` that puts `A[I]` in sorted order along the given dimension, and sort A.
+If `A` has more than one dimension, then the `dims` keyword argument must be specified. The order is specified
+using the same keywords as [`ssortperm!`](@ref). The permutation is guaranteed to be stable.
+See also [`sortperm!`](@ref), [`partialsortperm`](@ref), [`invperm`](@ref), [`indexin`](@ref).
+To sort slices of an array, refer to [`sortslices`](@ref).
+
+# Examples
+```jldoctest
+julia> A = [8 7; 5 6]
+2×2 Matrix{Int64}:
+ 8  7
+ 5  6
+julia> ssortperm!(A, dims = 1)
+2×2 Matrix{Int64}:
+ 2  4
+ 1  3
+julia> A
+2×2 Matrix{Int64}:
+ 5  6
+ 8  7
+ julia> ssortperm!(A, dims = 2)
+ 2×2 Matrix{Int64}:
+ 1  3
+ 4  2
+ julia> A
+ 2×2 Matrix{Int64}:
+ 5  6
+ 7  8
+```
+"""
+function ssortperm!(A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+    ix = copymutable(LinearIndices(A))
+    ssortperm!!(ix, A, lt=lt, by=by, rev=rev, order=order, dims=dims)
+end
+
+"""
+    ssortperm(A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+
+Return a permutation vector or array `I` that puts `A[I]` in sorted order along the given dimension.
+If `A` has more than one dimension, then the `dims` keyword argument must be specified. The order is specified
+using the same keywords as [`ssortperm!`](@ref). The permutation is guaranteed to be stable.
+See also [`sortperm!`](@ref), [`partialsortperm`](@ref), [`invperm`](@ref), [`indexin`](@ref).
+To sort slices of an array, refer to [`sortslices`](@ref).
+
+# Examples
+```jldoctest
+julia> A = [8 7; 5 6]
+2×2 Matrix{Int64}:
+ 8  7
+ 5  6
+julia> ssortperm(A, dims = 1)
+2×2 Matrix{Int64}:
+ 2  4
+ 1  3
+julia> ssortperm(A, dims = 2)
+2×2 Matrix{Int64}:
+ 3  1
+ 2  4
+```
+"""
+function ssortperm(A::AbstractArray; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward, dims::Integer)
+    ix = copymutable(LinearIndices(A))
+    ssortperm!(ix, A, lt=lt, by=by, rev=rev, order=order, dims=dims)
 end
 
 end

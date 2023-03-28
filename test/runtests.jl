@@ -15,7 +15,7 @@ function randn_with_nans(n,p)
 end
 
 @testset "SimultaneousSortperm.jl" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for T in [UInt16, Int, Float64], rev in [false, true], lt in [isless, >]
             for order in [Base.Order.Forward, Base.Order.Reverse], by in [identity, x->x÷100]
 
@@ -58,7 +58,7 @@ end
 end;
 
 @testset "OffsetArrays" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for offset in [-n , -1, 0, 1, n]
             v = OffsetArray(rand(Int,n), (1:n).+offset)
             pref = sortperm(v)
@@ -77,7 +77,7 @@ end;
 end;
 
 @testset "rand_with_NaNs and negative Floats" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         v = randn_with_nans(n,0.1)
         vo = OffsetArray(copy(v), (1:n).+100)
         for order in [Base.Order.Forward, Base.Order.Reverse]
@@ -114,7 +114,7 @@ nan_and_not_missing(x) = !ismissing(x) ? isnan(x) : false
 not_nan_and_not_missing(x) = !ismissing(x) ? !isnan(x) : false
 
 @testset "missing" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         v = [rand(1:100) < 50 ? missing : randn_with_nans(1,0.1)[1] for _ in 1:n]
         vo = OffsetArray(copy(v), (1:n).+100)
         for order in [Base.Order.Forward, Base.Order.Reverse]
@@ -162,43 +162,43 @@ not_nan_and_not_missing(x) = !ismissing(x) ? !isnan(x) : false
 end;
 
 @testset "randstring" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for len in 0:17
             for order in [Base.Order.Forward, Base.Order.Reverse]
-            v = [randstring(rand(0:len)) for _ in 1:n]
-            vo  = OffsetArray(copy(v), (1:n).+100)
+                v = [randstring(rand(0:len)) for _ in 1:n]
+                vo  = OffsetArray(copy(v), (1:n).+100)
 
-            pref = sortperm(v, order=order)
-            vref = sort(v, order=order)
+                pref = sortperm(v, order=order)
+                vref = sort(v, order=order)
 
-            p = ssortperm(v, order=order)
-            @test p == pref
+                p = ssortperm(v, order=order)
+                @test p == pref
 
-            v2 = copy(v)
-            p .= 0
-            ssortperm!!(p, v2, order=order)
-            @test p == pref
-            @test v2 == vref
+                v2 = copy(v)
+                p .= 0
+                ssortperm!!(p, v2, order=order)
+                @test p == pref
+                @test v2 == vref
 
-            # offset
-            prefo = sortperm(vo, order=order)
-            vrefo = sort(vo, order=order)
+                # offset
+                prefo = sortperm(vo, order=order)
+                vrefo = sort(vo, order=order)
 
-            po = ssortperm(vo, order=order)
-            @test po == prefo
+                po = ssortperm(vo, order=order)
+                @test po == prefo
 
-            v2o = copy(vo)
-            po .= 0
-            ssortperm!!(po, v2o, order=order)
-            @test po == prefo
-            @test v2o == vrefo
+                v2o = copy(vo)
+                po .= 0
+                ssortperm!!(po, v2o, order=order)
+                @test po == prefo
+                @test v2o == vrefo
             end
         end
     end
 end;
 
 @testset "bad_strings" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for len in [5,50,200]
             v = [String(rand(UInt8.([0,1,2,100,253,254,255]),rand(0:len))) for _ in 1:n]
             p = ssortperm(v)
@@ -209,42 +209,42 @@ end;
 end;
 
 @testset "short_strings_with_missing" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for len in 0:17
             for order in [Base.Order.Forward, Base.Order.Reverse]
-            v = [rand(1:100) < 50 ? missing : String(rand(UInt8.([0,1,2,100,253,254,255]),rand(0:len))) for _ in 1:n]
-            vo  = OffsetArray(copy(v), (1:n).+100)
+                v = [rand(1:100) < 50 ? missing : String(rand(UInt8.([0,1,2,100,253,254,255]),rand(0:len))) for _ in 1:n]
+                vo  = OffsetArray(copy(v), (1:n).+100)
 
-            pref = sortperm(v, order=order)
-            vref = sort(v, order=order)
+                pref = sortperm(v, order=order)
+                vref = sort(v, order=order)
 
-            p = ssortperm(v, order=order)
-            p == pref || println(v)
-            @test p == pref
+                p = ssortperm(v, order=order)
+                p == pref || println(v)
+                @test p == pref
 
-            v2 = copy(v)
-            p .= 0
-            ssortperm!!(p, v2, order=order)
-            @test p == pref
-            @test ismissing.(v2) == ismissing.(vref)
-            @test issorted(v2, order=order)
+                v2 = copy(v)
+                p .= 0
+                ssortperm!!(p, v2, order=order)
+                @test p == pref
+                @test ismissing.(v2) == ismissing.(vref)
+                @test issorted(v2, order=order)
 
-            # offset
-            po = ssortperm(vo, order=order)
-            @test issorted(vo[po], order=order)
+                # offset
+                po = ssortperm(vo, order=order)
+                @test issorted(vo[po], order=order)
 
-            v2o = copy(vo)
-            po .= 0
-            ssortperm!!(po, v2o, order=order)
-            @test issorted(vo[po], order=order)
-            @test issorted(v2o, order=order)
+                v2o = copy(vo)
+                po .= 0
+                ssortperm!!(po, v2o, order=order)
+                @test issorted(vo[po], order=order)
+                @test issorted(v2o, order=order)
             end
         end
     end
 end;
 
 @testset "bool" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for order in [Base.Order.Forward, Base.Order.Reverse]
             v = rand(Bool,n)
             vo  = OffsetArray(copy(v), (1:n).+100)
@@ -260,7 +260,7 @@ end;
 end;
 
 @testset "bool_with_missing" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for order in [Base.Order.Forward, Base.Order.Reverse]
             v = [rand(1:100) < 33 ? missing : rand(Bool) for _ in 1:n]
             vo  = OffsetArray(copy(v), (1:n).+100)
@@ -276,7 +276,7 @@ end;
 end;
 
 @testset "small_int_range" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for order in [Base.Order.Forward, Base.Order.Reverse]
             v = rand(1:(n÷4+2),n)
             vo  = OffsetArray(copy(v), (1:n).+100)
@@ -292,7 +292,7 @@ end;
 end;
 
 @testset "small_int_range_with_missing" begin
-    for n in [(0:31)..., 100, 999, 1000, 1001]
+    for n in [(0:33)..., 100, 999, 1000, 1001]
         for order in [Base.Order.Forward, Base.Order.Reverse]
             v = [rand(1:100) < 20 ? missing : rand(1:(n÷4+2)) for _ in 1:n]
             vo  = OffsetArray(copy(v), (1:n).+100)
@@ -306,3 +306,84 @@ end;
         end
     end
 end;
+
+if VERSION >= v"v1.9.0-alpha1"
+    @testset "Matrix" begin
+        for n in [(1:33)..., 100, 999, 1000, 1001]
+            for m in [(1:33)..., 100, 999, 1000, 1001]
+                A = rand(Int,n,m)
+                Ao = OffsetArray(A, (1:n).+100, (1:m).+100)
+                for order in [Base.Order.Forward, Base.Order.Reverse]
+                    for dim in 1:2
+                        pref = sortperm(A, order=order, dims=dim)
+                        p = ssortperm(A, order=order, dims=dim)
+                        @test p == pref
+
+                        prefo = sortperm(Ao, order=order, dims=dim)
+                        po = ssortperm(Ao, order=order, dims=dim)
+                        @test po == prefo
+
+                        p .= 0
+                        ssortperm!(p, A, order=order, dims=dim)
+                        @test p == pref
+
+                        A2 = copy(A)
+                        p = ssortperm!(A2, order=order, dims=dim)
+                        @test p == pref
+                        @test A2 == A[pref]
+
+                        A2 .= A
+                        p .= 0
+                        ssortperm!!(p, order=order, A2, dims=dim)
+                        @test p == pref
+                        @test A2 == A[pref]
+                    end
+                end
+            end
+        end
+    end;
+
+    @testset "NDArray" begin
+        for n in [1,31,32,33,34]
+            for m in [1,31,32,33,34]
+                for l in [1,31,32,33,34]
+                    A = rand(Int, n, m, l)
+                    for order in [Base.Order.Forward, Base.Order.Reverse]
+                        for dim in 1:2:3
+
+                            pref = sortperm(A, order=order, dims=dim)
+                            p = ssortperm(A, order=order, dims=dim)
+                            @test pref == p
+
+                            A2 = copy(A)
+                            p .= 0
+                            ssortperm!!(p, A2, order=order, dims=dim)
+                            @test pref == p
+                            @test A2 == A[pref]
+                        end
+                    end
+                end
+            end
+        end
+    end;
+else
+    @testset "Matrix" begin
+        for n in [(1:33)..., 100, 999, 1000, 1001]
+            for m in [(1:33)..., 100, 999, 1000, 1001]
+                A = rand(Int,n,m)
+                for order in [Base.Order.Forward, Base.Order.Reverse]
+                    p = ssortperm(A, order=order, dims=1)
+                    As = A[p]
+                    for i in 1:m
+                        @test issorted(view(As,:,i), order=order)
+                    end
+                    p = ssortperm(A, order=order, dims=2)
+                    As = A[p]
+                    for i in 1:n
+                        @test issorted(view(As,i,:), order=order)
+                    end
+                end
+            end
+        end
+    end;
+end

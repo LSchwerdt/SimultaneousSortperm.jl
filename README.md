@@ -22,7 +22,7 @@ More benchmark results can be found [here](https://github.com/LSchwerdt/MiscJuli
 ## Roadmap
 
 - Use pattern-defeating-quicksort from SortingAlgorithms when PR is merged.
-- Implement `dims` keyword (added to `sortperm` in Julia 1.9).
-- Dispatch to `sortperm` / `sortperm!` when they are faster (very small inputs)?
+- Add optimization for very small inputs.
+- Use allocating optimizations when `dims` keyword is used?
 - Contribute to Base / SortingAlgorithms
 - (Include option to use different sorting algorithms?)
