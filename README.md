@@ -22,7 +22,10 @@ More benchmark results can be found [here](https://github.com/LSchwerdt/MiscJuli
 ## Roadmap
 
 - Use pattern-defeating-quicksort from SortingAlgorithms when PR is merged.
-- Add optimization for very small inputs.
-- Use allocating optimizations when `dims` keyword is used?
 - Contribute to Base / SortingAlgorithms
-- (Include option to use different sorting algorithms?)
+
+## Possible Improvements / Changes
+
+- Improve optimization for very small inputs.
+- Use allocating optimizations when `dims` keyword is used?
+- Include option to use different sorting algorithms?

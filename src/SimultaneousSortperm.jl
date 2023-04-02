@@ -11,6 +11,9 @@ using Base: copymutable, uinttype, sub_with_overflow, add_with_overflow
 
 export ssortperm!!, ssortperm!, ssortperm
 
+const SSORTPERM_INPLACE_SMALL_THRESHOLD = 40
+const SSORTPERM_SMALL_THRESHOLD = 80
+
 # send_to end from Base.sort
 # copied here for compatibility with earlier Julia versions
 """
@@ -357,6 +360,24 @@ function _sortperm_Missing_optimization!(ix, v, o::Ordering)
     _sortperm_type_optimization!(ix, v, lo, hi, o::Ordering, vcontainsmissing)
 end
 
+function _sortperm_inplace_small_optimization!(ix, v, vs, lo, hi, o::Ordering)
+    if hi + 1 <= lo + SSORTPERM_INPLACE_SMALL_THRESHOLD
+        # InsertionSort is stable. No need for sort_equal_subarrays!
+        sort!(vs, lo, hi, InsertionSort, Base.Order.By(x->x[1], o))
+        return ix
+    end
+    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+    _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+end
+
+function _sortperm_small_optimization(ix, v, o::Ordering)
+    if length(v) <= SSORTPERM_SMALL_THRESHOLD
+        return sortperm!(ix, v, order=o)
+    end
+    _sortperm_Missing_optimization!(ix, v, o)
+end
+
 """
     ssortperm!!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     Like [`ssortperm`](@ref), but also sorts v and accepts a preallocated index vector or array `ix` with the same `axes` as `v`.
@@ -384,9 +405,7 @@ function ssortperm!!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=i
     o = ord(lt, by, rev ? true : nothing, order)
     lo = firstindex(vs)
     hi = lastindex(vs)
-    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+    _sortperm_inplace_small_optimization!(ix, v, vs, lo, hi, o::Ordering)
     ix
 end
 
@@ -415,7 +434,7 @@ julia> v[ix]
 function ssortperm!(ix::AbstractVector{Int}, v::AbstractVector; lt=isless, by=identity, rev::Bool=false, order::Ordering=Forward)
     axes(ix) == axes(v) || throw(ArgumentError("index array must have the same size/axes as the source array, $(axes(ix)) != $(axes(v))"))
     o = ord(lt, by, rev ? true : nothing, order)
-    _sortperm_Missing_optimization!(ix, v, o::Ordering)
+    _sortperm_small_optimization(ix, v, o)
     ix
 end
 
@@ -474,24 +493,31 @@ end
 
 # ssortperm with dims
 
-function ssortperm_chunks!!(ix, v, vs, n, o, offsets_l, offsets_r)
+function ssortperm_chunks!!(ix, v, vs, n, o)
     fst = firstindex(vs)
     lst = lastindex(vs)
-    for lo = fst:n:lst
-        hi=lo+n-1
-        _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o, offsets_l, offsets_r)
+    if n <= SSORTPERM_INPLACE_SMALL_THRESHOLD
+        for lo = fst:n:lst
+            hi=lo+n-1
+            sort!(vs, lo, hi, InsertionSort, Base.Order.By(x->x[1], o))
+        end
+    else
+        offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+        offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
+        for lo = fst:n:lst
+            hi=lo+n-1
+            _sortperm_inplace_Missing_optimization!!(ix, v, vs, lo, hi, o::Ordering, offsets_l, offsets_r)
+        end
     end
     ix
 end
 
 function ssortperm_dim1!!(ix::AbstractArray{Int}, A::AbstractArray, o)
-    offsets_l = MVector{PDQ_BLOCK_SIZE, Int}(undef)
-    offsets_r = MVector{PDQ_BLOCK_SIZE, Int}(undef)
     Av = vec(A)
     ixv = vec(ix)
     vs = StructArray{Tuple{eltype(A),eltype(ix)}}(val=Av, ix=ixv)
     n = length(axes(A, 1))
-    ssortperm_chunks!!(ixv, Av, vs, n, o, offsets_l, offsets_r)
+    ssortperm_chunks!!(ixv, Av, vs, n, o)
 end
 
 """
